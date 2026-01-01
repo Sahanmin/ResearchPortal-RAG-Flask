@@ -47,41 +47,61 @@ def upload_pdf():
     global full_text
     global Research_paper_topics
     
-    file = request.files.get('file')
-    
-    if not file:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-    # print(filename)
-    file.save(filename)
-    
-    # Get all topics name from research paper
-    extracted_text = extract_text_from_pdf(filename)
-    full_text = extracted_text
-    extracted_sections = extract_pdf_sections(full_text=extracted_text)
-    # print(extracted_sections)
-    refined_sections = refine_sections(extracted_sections, llm)
-    # print(refined_sections)
-    section_with_content = split_sections_with_content(extracted_text, refined_sections)
-    
-    Research_paper_topics = section_with_content
-    
-    return jsonify({"topics": list(Research_paper_topics.keys())})
+    try:
+        file = request.files.get('file')
+        
+        if not file:
+            return jsonify({"error": "No file uploaded"}), 400
+        
+        filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        # print(filename)
+        file.save(filename)
+        
+        # Get all topics name from research paper
+        extracted_text = extract_text_from_pdf(filename)
+        full_text = extracted_text
+        extracted_sections = extract_pdf_sections(full_text=extracted_text)
+        # print(extracted_sections)
+        refined_sections = refine_sections(extracted_sections, llm)
+        # print(refined_sections)
+        section_with_content = split_sections_with_content(extracted_text, refined_sections)
+        
+        Research_paper_topics = section_with_content
+        
+        return jsonify({"topics": list(Research_paper_topics.keys())})
+    except Exception as e:
+        print(f"Error in upload_pdf: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 
 
 @app.route('/summary', methods=['POST'])
 def get_summary():
     global Research_paper_topics
     
-    topic = request.json.get('topic')
-    # print(topic)
-    
-    topic_content = Research_paper_topics.get(topic, "No summary available.")
-    
-    summary = generate_detailed_summary(topic_content, llm)
-    
-    return jsonify({"summary": summary})
+    try:
+        topic = request.json.get('topic')
+        # print(topic)
+        
+        if not Research_paper_topics:
+            return jsonify({"error": "No paper uploaded yet"}), 400
+        
+        topic_content = Research_paper_topics.get(topic, "No summary available.")
+        
+        if topic_content == "No summary available.":
+            return jsonify({"error": f"Topic '{topic}' not found"}), 404
+        
+        summary = generate_detailed_summary(topic_content, llm)
+        
+        return jsonify({"summary": summary})
+    except Exception as e:
+        print(f"Error in get_summary: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
     
 
 @app.route('/chat', methods=['POST'])
@@ -89,19 +109,33 @@ def chat():
     global full_text
     global vector_db
     
-    user_message = request.json.get('message')
-    print(user_message)
-    
-    if not vector_db:
-        vectordb = create_vector_db(text=full_text, embedder=embedder)
-        vector_db = vectordb
+    try:
+        user_message = request.json.get('message')
+        print(f"User question: {user_message}")
         
-    chain = get_qa_chain(vectordb=vector_db, llm=llm)
-    
-    ai_response = chain.invoke(user_message)['result']
-    print(ai_response)
-    
-    return jsonify({"response": ai_response})
+        if not full_text:
+            return jsonify({"error": "No paper uploaded yet"}), 400
+        
+        if not vector_db:
+            print("Creating vector database...")
+            vectordb = create_vector_db(text=full_text, embedder=embedder)
+            vector_db = vectordb
+            print("Vector database created successfully")
+            
+        chain = get_qa_chain(vectordb=vector_db, llm=llm)
+        
+        # Use 'query' as the input key (as defined in RAG_retrival_chain.py)
+        result = chain.invoke({"query": user_message})
+        ai_response = result['result']
+        print(f"AI response: {ai_response}")
+        
+        return jsonify({"response": ai_response})
+    except Exception as e:
+        print(f"Error in chat: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
         
     
     

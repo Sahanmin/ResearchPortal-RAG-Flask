@@ -2,51 +2,39 @@ import json
 from typing import List, Dict
 
 def refine_sections(input_list: str, llm) -> List[Dict]:
-    prompt = f"""
-You are a precise data processor.
-
-I will give you a JSON list of sections from a research paper. Each item may have:
-- "section" (string)
-- optional "subsection" (string)
-- "start" (integer)
-
-Some entries are unnecessary and must be **removed completely**:
-1. Figure or Table captions (any "section" starting with "Figure" or "Table").
-2. Incomplete, meaningless, or fragment sections (e.g., "making", "length nis smaller...").
-3. Any other irrelevant entries that are not proper sections or subsections.
-
-Your task is to **refine this list**:
-
-- Keep only meaningful main sections and their subsections.
-- Main sections should be in the format: 
-  {{"section": "Section Name", "start": number}}
-- Subsections should be in the format: 
-  {{"section": "Parent Section", "subsection": "Subsection Name", "start": number}}
-- The output must be **strictly a JSON array of dictionaries**.
-- Do **not** include any explanations, notes, extra text, or commentary.
-- If a section is unnecessary (e.g., figure, table, fragment), **exclude it completely**.
-
-Here is the input JSON:
-
-{input_list}
-
-Always return list of dictionaries only, no preamble.
-"""
-
-    # Call the LLM — returns a string
+    """
+    Refine sections by filtering out figures, tables, and fragments.
+    Uses local filtering instead of LLM to avoid rate limits.
+    """
     try:
-        assistant_text = llm.invoke(prompt).content.strip()
-        # print(assistant_text)
-        # print("Raw LLM Output:\n", assistant_text)
-
-        # Parse JSON and return
-        sections = json.loads(assistant_text)
+        # Parse the input JSON
+        sections = json.loads(input_list) if isinstance(input_list, str) else input_list
+        
+        # Filter out unwanted sections locally
+        refined = []
+        for item in sections:
+            section_name = item.get("section", "").lower()
+            
+            # Skip figures and tables
+            if section_name.startswith("figure") or section_name.startswith("table"):
+                continue
+            
+            # Skip very short or meaningless sections
+            if len(section_name) < 3:
+                continue
+                
+            # Skip fragments (sections with less than 2 words)
+            if len(section_name.split()) < 2 and section_name not in ["abstract", "introduction", "conclusion", "references", "acknowledgments", "appendix"]:
+                continue
+            
+            refined.append(item)
+        
+        return refined
+        
     except (json.JSONDecodeError, KeyError, TypeError) as e:
-        print("Warning: LLM output not valid JSON. Returning empty list.")
+        print("Warning: Could not parse sections. Returning empty list.")
         print("Error:", e)
-        sections = []
-
-    return sections
+        return []
 
 
 def split_sections_with_content(text: str, detected_sections: List[Dict]) -> List[Dict]:

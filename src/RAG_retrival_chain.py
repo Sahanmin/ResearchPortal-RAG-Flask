@@ -5,7 +5,11 @@ from langchain.chains import RetrievalQA
 
 def get_qa_chain(vectordb, llm):
     
-    retriever = vectordb.as_retriever(score_threshold=0.7)
+    # Configure retriever with search parameters
+    retriever = vectordb.as_retriever(
+        search_type="similarity",
+        search_kwargs={"k": 4}  # Return top 4 most relevant chunks
+    )
     
     # Custom prompt
     prompt_template = """
